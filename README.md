@@ -75,6 +75,47 @@ docker compose down
 | cAdvisor | http://localhost:8080/containers | — |
 | Prometheus Alerts | http://localhost:9090/alerts | — |
 
+### 各服务使用指南
+
+#### Grafana (可视化看板) — http://localhost:3000
+
+1. 浏览器打开 `http://localhost:3000`，登录 `admin` / `admin`
+2. 左侧菜单 → **Dashboards** → 点击 "**主机与容器安全监控**"
+3. 仪表盘自动展示 CPU 仪表盘、内存曲线、网络流量、容器资源、告警面板
+4. 顶部时间选择器可切换查看范围（最近 5 分钟 ~ 最近 30 天）
+5. 仪表盘每 10 秒自动刷新
+
+#### Prometheus (指标查询 + 告警) — http://localhost:9090
+
+1. 打开 `http://localhost:9090`
+2. **查指标**：搜索框输入指标名（如 `node_cpu_seconds_total`）→ 点击 Execute
+3. **画图表**：输入查询表达式后切换到 Graph 标签页，例如：
+   - `rate(node_network_receive_bytes_total[5m])` — 网络接收速率
+   - `100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)` — CPU 使用率
+4. **看抓取目标**：Status → Targets，确认各采集目标状态为 UP
+5. **看告警**：Alerts，查看 9 条规则中哪些已触发
+
+#### cAdvisor (容器资源监控) — http://localhost:8080/containers
+
+1. 打开 `http://localhost:8080/containers`
+2. 首页列出所有运行中容器的实时 CPU / 内存 / 网络 / 文件系统用量
+3. 点击某个容器名进入详情，可看到该容器的资源使用历史曲线
+4. Subcontainers 展示容器内部进程级别的指标
+
+#### Alertmanager (告警管理) — http://localhost:9093
+
+1. 打开 `http://localhost:9093`
+2. 查看当前触发的告警、已分组合并的告警
+3. 告警由 Prometheus 自动评估并推送过来，通常无需手动操作
+
+#### Node Exporter (主机原始指标) — http://localhost:9100/metrics
+
+1. 打开 `http://localhost:9100/metrics`
+2. 显示 Prometheus 抓取的原始主机指标（纯文本格式，供机器读取）
+3. 这些数据的可视化通过 Prometheus → Grafana 图表完成，一般不直接访问此页面
+
+> 日常使用只需关注 **Grafana (:3000)** 的仪表盘即可，其余服务为底层数据采集与存储。
+
 ## 告警规则 (9 条)
 
 ### 主机安全 (4)
