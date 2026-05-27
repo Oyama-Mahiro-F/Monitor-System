@@ -64,6 +64,24 @@ docker compose up -d
 docker compose down
 ```
 
+### 告警模拟
+
+启动集群后，运行模拟脚本触发告警进行演示验证：
+
+**Windows** — 双击 `simulate/simulate-alerts.bat`  
+**Linux/Mac** — `bash simulate/simulate-alerts.sh`
+
+模拟场景：
+
+| 阶段 | 操作 | 预期告警 | 等待 |
+|------|------|----------|------|
+| 1 | 启动 2 个 CPU 压力容器 | ContainerHighCPU | ~3 min |
+| 2 | 启动内存压力容器 (800MB) | ContainerHighMemory | ~3 min |
+| 3 | 暂停 node-exporter | TargetDown | ~1 min |
+| 4 | 重启 cadvisor | ContainerRestarted | 即时 |
+
+脚本自动触发、等待、检查、清理。运行期间可在 Grafana 仪表盘底部"安全告警面板"行实时观察告警变化。
+
 ### 访问地址
 
 | 服务 | URL | 账号 |
@@ -154,15 +172,18 @@ docker compose down
 ├── build.bat / build.sh            # 一键启动脚本
 ├── prometheus/
 │   ├── prometheus.yml               # 采集配置
-│   └── rules.yml                    # 告警规则
+│   └── rules.yml                    # 告警规则 (10 条)
 ├── grafana/
 │   ├── provisioning/
 │   │   ├── datasources/             # Prometheus 数据源自动配置
 │   │   └── dashboards/              # 仪表盘自动加载配置
 │   └── dashboards/
 │       └── host-monitoring.json     # 预置仪表盘 JSON
-└── alertmanager/
-    └── alertmanager.yml             # 告警路由配置
+├── alertmanager/
+│   └── alertmanager.yml             # 告警路由配置
+└── simulate/
+    ├── simulate-alerts.bat           # 告警模拟脚本 (Windows)
+    └── simulate-alerts.sh            # 告警模拟脚本 (Linux/Mac)
 ```
 
 ## 预置仪表盘

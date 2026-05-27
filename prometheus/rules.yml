@@ -8,10 +8,9 @@ groups:
   - name: host_security
     rules:
 
-      # CPU 持续高负载 → 可能是挖矿木马 / DoS 攻击
       - alert: HighCPULoad
-        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
-        for: 5m
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[3m])) * 100) > 80
+        for: 3m
         labels:
           severity: warning
           category: resource
@@ -19,10 +18,9 @@ groups:
           summary: "主机 CPU 使用率持续 > 80%"
           description: "{{ $labels.instance }} CPU 负载 {{ $value | humanize }}%，需排查异常进程。"
 
-      # 内存使用过高 → 可能内存泄漏或内存耗尽攻击
       - alert: HighMemoryUsage
         expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
-        for: 5m
+        for: 3m
         labels:
           severity: warning
           category: resource
@@ -30,7 +28,6 @@ groups:
           summary: "主机内存使用率 > 85%"
           description: "{{ $labels.instance }} 内存使用率 {{ $value | humanize }}%"
 
-      # 磁盘空间耗尽
       - alert: DiskSpaceLow
         expr: (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes) * 100 < 10
         for: 1m
@@ -41,10 +38,9 @@ groups:
           summary: "磁盘可用空间 < 10%"
           description: "{{ $labels.instance }} 挂载点 {{ $labels.mountpoint }} 仅剩 {{ $value | humanize }}%"
 
-      # 磁盘 I/O 速率异常
       - alert: HighDiskIO
         expr: rate(node_disk_read_bytes_total[5m]) + rate(node_disk_written_bytes_total[5m]) > 104857600
-        for: 10m
+        for: 5m
         labels:
           severity: warning
           category: storage
@@ -56,10 +52,9 @@ groups:
   - name: network_security
     rules:
 
-      # 网络入站流量激增 → 可能是 DDoS / 端口扫描
       - alert: HighNetworkReceive
         expr: rate(node_network_receive_bytes_total{device!="lo"}[5m]) > 104857600
-        for: 5m
+        for: 3m
         labels:
           severity: warning
           category: network
@@ -67,10 +62,9 @@ groups:
           summary: "入站网络流量 > 100MB/s"
           description: "{{ $labels.instance }} 网卡 {{ $labels.device }} 入站速率 {{ $value | humanize }}B/s"
 
-      # TCP 连接数异常
       - alert: HighTCPConnections
         expr: node_netstat_Tcp_CurrEstab > 1000
-        for: 5m
+        for: 3m
         labels:
           severity: warning
           category: network
@@ -78,43 +72,55 @@ groups:
           summary: "TCP 当前连接数 > 1000"
           description: "{{ $labels.instance }} 存在 {{ $value }} 个 TCP 连接，需排查是否有异常连接"
 
-  # ── 容器安全告警 ────────────────────────────────────────────
+  # ── 容器安全告警 (基于 cAdvisor) ──────────────────────────
+  # 注意: Windows Docker Desktop 下 cAdvisor 通过 cgroup id 识别容器
+  #       id 格式为 /docker/<container-id>，无 name/image label
   - name: container_security
     rules:
 
-      # 容器异常退出
-      - alert: ContainerRestart
-        expr: rate(container_last_seen{container_label_io_kubernetes_container_name!=""}[10m]) > 0
+      # 容器 CPU 异常 — 持续占用 > 1.5 核
+      - alert: ContainerHighCPU
+        expr: rate(container_cpu_usage_seconds_total{id=~"/docker/.*"}[3m]) > 0.9
+        for: 2m
+        labels:
+          severity: warning
+          category: container
+        annotations:
+          summary: "容器 {{ $labels.id }} CPU 使用异常"
+          description: "容器 {{ $labels.id }} 当前使用 {{ $value | humanize }} CPU 核，可能被入侵用于挖矿。"
+
+      # 容器内存异常 — 超过 512MB
+      - alert: ContainerHighMemory
+        expr: container_memory_usage_bytes{id=~"/docker/.*"} > 268435456
+        for: 2m
+        labels:
+          severity: warning
+          category: container
+        annotations:
+          summary: "容器 {{ $labels.id }} 内存使用 > 512MB"
+          description: "容器 {{ $labels.id }} 内存使用 {{ $value | humanize }}B，可能存在内存泄漏或攻击。"
+
+      # 容器异常重启
+      - alert: ContainerRestarted
+        expr: changes(container_start_time_seconds{id=~"/docker/.*"}[5m]) > 0
         for: 0m
         labels:
           severity: warning
           category: container
         annotations:
-          summary: "容器发生重启"
-          description: "容器 {{ $labels.name }} 在最近 10 分钟内重启"
-
-      # 容器 CPU 资源滥用
-      - alert: ContainerHighCPU
-        expr: rate(container_cpu_user_seconds_total{container_label_io_kubernetes_container_name!=""}[5m]) * 100 > 150
-        for: 5m
-        labels:
-          severity: warning
-          category: container
-        annotations:
-          summary: "容器 CPU 使用异常"
-          description: "容器 {{ $labels.name }} CPU 使用率偏高"
+          summary: "容器 {{ $labels.id }} 发生重启"
+          description: "容器 {{ $labels.id }} 在近 5 分钟内被重启，请排查原因。"
 
   # ── 服务可用性告警 ──────────────────────────────────────────
   - name: service_availability
     rules:
 
-      # 监控目标下线
       - alert: TargetDown
         expr: up == 0
-        for: 2m
+        for: 1m
         labels:
           severity: critical
           category: availability
         annotations:
           summary: "监控目标 {{ $labels.job }} ({{ $labels.instance }}) 下线"
-          description: "服务 {{ $labels.job }} 已不可达超过 2 分钟，请立即排查。"
+          description: "服务 {{ $labels.job }} 已不可达超过 1 分钟，请立即排查。"
