@@ -1,0 +1,113 @@
+# =============================================================================
+# 基于 Docker 构建 Prometheus+Grafana 监控集群
+# 北京邮电大学 信息安全编程技术与实例开发 课程设计 — 选题4
+# =============================================================================
+#
+# 架构:
+#   Prometheus   — 指标采集 & 时序存储 (核心)
+#   Grafana      — 可视化看板 (Web UI :3000)
+#   Node Exporter — 物理节点指标 (CPU/内存/磁盘/网络)
+#   cAdvisor     — 容器级指标 (每个容器的资源用量)
+#   Alertmanager — 告警路由 & 通知
+#
+# 安全监控维度:
+#   - 主机资源异常检测 (CPU 飙升 / 内存泄漏 / 磁盘写满)
+#   - 容器异常行为监控 (资源滥用 / 异常重启 / 端口暴露)
+#   - 网络流量基线偏离告警
+# =============================================================================
+
+services:
+
+  # ── Prometheus 核心 ──────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - monitor-net
+
+  # ── Grafana 可视化 ──────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - monitor-net
+    depends_on:
+      - prometheus
+
+  # ── Node Exporter 主机指标采集 ──────────────────────────────
+  # NOTE: Windows Docker Desktop 不支持 host pid/root 挂载，
+  #       节点级指标采集受限（仅采集自身进程指标）。
+  #       Linux 生产环境可启用下方完整配置。
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - "--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc|var/lib/docker)($$|/)"
+      - "--collector.netclass.ignored-devices=^(lo|veth.*|docker.*)$$"
+    networks:
+      - monitor-net
+
+  # ── cAdvisor 容器指标采集 ───────────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    networks:
+      - monitor-net
+
+  # ── Alertmanager 告警路由 ───────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - monitor-net
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+
+networks:
+  monitor-net:
+    driver: bridge
