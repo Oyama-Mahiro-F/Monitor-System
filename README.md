@@ -82,6 +82,15 @@ docker compose down
 
 脚本自动触发、等待、检查、清理。运行期间可在 Grafana 仪表盘底部"安全告警面板"行实时观察告警变化。
 
+### 实时监控面板
+
+另开一个终端窗口，运行实时监控面板持续观察告警状态变化：
+
+**Windows** — 双击 `simulate/watch-alerts.bat`  
+**Linux/Mac** — `bash simulate/watch-alerts.sh`
+
+每 5 秒自动刷新，显示容器运行状态 + 当前告警 (FIRING/PENDING)，Ctrl+C 退出。
+
 ### 访问地址
 
 | 服务 | URL | 账号 |
@@ -183,7 +192,9 @@ docker compose down
 │   └── alertmanager.yml             # 告警路由配置
 └── simulate/
     ├── simulate-alerts.bat           # 告警模拟脚本 (Windows)
-    └── simulate-alerts.sh            # 告警模拟脚本 (Linux/Mac)
+    ├── simulate-alerts.sh            # 告警模拟脚本 (Linux/Mac)
+    ├── watch-alerts.bat              # 实时监控面板 (Windows)
+    └── watch-alerts.sh               # 实时监控面板 (Linux/Mac)
 ```
 
 ## 预置仪表盘
